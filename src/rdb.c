@@ -765,19 +765,33 @@ int rdbSaveBackground(char *filename) {
     pid_t childpid;
     long long start;
 
+    // 如果 BGSAVE 已经在执行，那么返回错误
     if (server.rdb_child_pid != -1) return REDIS_ERR;
 
+    // 记录 BGSAVE 执行前的数据库被修改次数
     server.dirty_before_bgsave = server.dirty;
+
+    // 最近一次尝试执行 BGSAVE 的时间
     server.lastbgsave_try = time(NULL);
 
+    // fork() 开始前的时间，记录 fork() 返回耗时用
     start = ustime();
+
+    // fork一个子进程，以下代码块是子进程的逻辑(用 pid==0 来判断是否是子进程)
     if ((childpid = fork()) == 0) {
         int retval;
 
         /* Child */
+        // 关闭网络连接 fd
         closeListeningSockets(0);
+
+        // 设置进程的标题，方便识别
         redisSetProcTitle("redis-rdb-bgsave");
+
+        // 执行保存RDB文件的操作
         retval = rdbSave(filename);
+
+        // 执行成功后，打印 copy-on-write 时使用的内存数
         if (retval == REDIS_OK) {
             size_t private_dirty = zmalloc_get_private_dirty();
 
@@ -787,22 +801,37 @@ int rdbSaveBackground(char *filename) {
                     private_dirty/(1024*1024));
             }
         }
+
+        // 向父进程发送信号
         exitFromChild((retval == REDIS_OK) ? 0 : 1);
+
+    // 父进程的执行逻辑
     } else {
         /* Parent */
+        // 计算 fork() 执行的时间
         server.stat_fork_time = ustime()-start;
         server.stat_fork_rate = (double) zmalloc_used_memory() * 1000000 / server.stat_fork_time / (1024*1024*1024); /* GB per second. */
         latencyAddSampleIfNeeded("fork",server.stat_fork_time/1000);
+
+        // 如果 fork() 出错，那么报告错误
         if (childpid == -1) {
             server.lastbgsave_status = REDIS_ERR;
             redisLog(REDIS_WARNING,"Can't save in background: fork: %s",
                 strerror(errno));
             return REDIS_ERR;
         }
+
+        // 打印 BGSAVE 开始的日志
         redisLog(REDIS_NOTICE,"Background saving started by pid %d",childpid);
+
+        // 记录数据库开始 BGSAVE 的时间
         server.rdb_save_time_start = time(NULL);
+
+        // 记录负责执行 BGSAVE 的子进程 ID
         server.rdb_child_pid = childpid;
         server.rdb_child_type = REDIS_RDB_CHILD_TYPE_DISK;
+
+        // 关闭自动 rehash
         updateDictResizePolicy();
         return REDIS_OK;
     }

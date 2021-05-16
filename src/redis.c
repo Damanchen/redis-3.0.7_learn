@@ -3689,8 +3689,10 @@ int main(int argc, char **argv) {
                 exit(1);
             }
         }
+        // 打印 TCP 端口
         if (server.ipfd_count > 0)
             redisLog(REDIS_NOTICE,"The server is now ready to accept connections on port %d", server.port);
+        // 打印本地套接字端口    
         if (server.sofd > 0)
             redisLog(REDIS_NOTICE,"The server is now ready to accept connections at %s", server.unixsocket);
     } else {
